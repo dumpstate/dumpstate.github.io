@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+ 
+ <title>The blog of Albert Sadowski</title>
+ <link href="http://example.com/atom.xml" rel="self"/>
+ <link href="http://example.com"/>
+ <updated>2016-05-07T08:14:59+02:00</updated>
+ <id>http://example.com</id>
+ <author>
+   <name>Albert Sadowski</name>
+   <email>albert.sadowski@gmail.com</email>
+ </author>
+
+ 
+ <entry>
+   <title>Simple NLP Search</title>
+   <link href="http://example.com/blog/2016/05/05/simple-nlp-search.html"/>
+   <updated>2016-05-05T00:00:00+02:00</updated>
+   <id>http://example.com/blog/2016/05/05/simple-nlp-search</id>
+   <content type="html">&lt;p&gt;Full text search is easy to use. But the inherent ambiguity of natural languages 
+causes search results to be biased with false positives. To obtain more accurate results, we need to change the approach and provide more domain specific data to the search engine.&lt;/p&gt;
+
+&lt;p&gt;The most common and easiest to improve search results is to introduce filters, i.e. multiple input fields (text fields, radio buttons etc.) named after properties. This way we know how to shape the query and then return specific results. In combination with some approximate string matching algorithms, we may obtain very accurate search results. Unfortunately filters require forms with multiple fields at the cost of simple UX. (see &lt;em&gt;Figure 1&lt;/em&gt;).&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/img/simple-nlp-search/ebay-motors.png&quot; alt=&quot;Figure 1&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;What if we’d like to stick to a single text field and still have accurate search results (see &lt;em&gt;Figure 2&lt;/em&gt;)? Surely one needs to employ natural language processing (NLP) tools. But everyone in the IT industry knows that NLP is hard to master and majority thinks it’s a highly academic approach. How can this be easily employed to improve search results over a specific domain?&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/img/simple-nlp-search/featured-image.png&quot; alt=&quot;Figure 2&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;domain&quot;&gt;Domain&lt;/h2&gt;
+
+&lt;p&gt;Specificity of the domain is the key part of the approach. Machine learning algorithms are far from being ready to answer general questions. Even though the algorithms exist, they are far from our reach. For simplicity, we have to narrow the domain. Usually when we are in a need for introducing a search form, we operate within some area, i.e. finding a car at ebay.com we specify the type of the car, year of production, manufacturer, model etc..&lt;/p&gt;
+
+&lt;p&gt;For the sake of this article, let’s take the domain of film screenings, i.e. tuple of: movie, theater and the date and time. We may also assume we know the geographical location of the theater and genre of the movie. We are going to query the film screening by title (or just genre), theater name (or just location) and date and time that the screening is going to happen - that is the data we need to collect from the user. Sample expressions we’d like to handle:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;em&gt;the martian in san francisco tomorrow&lt;/em&gt; - query all theaters in San Francisco that will play &lt;em&gt;The Martian&lt;/em&gt; tomorrow,&lt;/li&gt;
+  &lt;li&gt;&lt;em&gt;the revenant in amc next week&lt;/em&gt; - query &lt;em&gt;AMC&lt;/em&gt; theater for all shows of &lt;em&gt;The Revenant&lt;/em&gt; that will occur next week,&lt;/li&gt;
+  &lt;li&gt;&lt;em&gt;cinemark next wednesday&lt;/em&gt; - query &lt;em&gt;Cinemark&lt;/em&gt; theaters for all the shows that will occur next Wednesday,&lt;/li&gt;
+  &lt;li&gt;&lt;em&gt;drama in san francisco on 11 June&lt;/em&gt; - query all theaters in San Francisco for a drama that will occur on 11th of June.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;All expressions are transformed from natural language to a query of the form:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;case class Query(
+  movie: Option[Either[MovieName, MovieGenre]],
+  theater: Option[Either[TheaterName, TheaterLocation]]
+  from: Option[DateTime],
+  to: Option[DateTime])
+
+case class MovieName(value: String)
+case class MovieGenre(value: String)
+case class TheaterName(value: String)
+case class TheaterLocation(value: String)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id=&quot;need-for-nlp&quot;&gt;Need for NLP&lt;/h2&gt;
+
+&lt;p&gt;It is hard to extract information from natural language. If we assume that there are just a few kinds of input statements, like &lt;code&gt;[MOVIE_NAME] in [THEATER_LOCATION] [TIME_EXPRESSION]&lt;/code&gt;, then it might be possible to program the parser for such statements explicitly. But even though someone manages to do this, such an algorithm would be unmaintainable. With NLP tools we may approach this problem without the need to program explicitly.&lt;/p&gt;
+
+&lt;p&gt;Moreover, some statements are extremely similar in their structure, e.g.: &lt;code&gt;[MOVIE_NAME] [TIME_EXPRESSION]&lt;/code&gt; and &lt;code&gt;[THEATER_NAME] [TIME_EXPRESSION]&lt;/code&gt; - it is impossible to unambiguously differentiate both statements. NLP tools also care about the structure of &lt;code&gt;[MOVIE_NAME]&lt;/code&gt; and &lt;code&gt;[THEATER NAME]&lt;/code&gt;, then when extracting the information from statements it has more data to make a decision than the explicit parser.&lt;/p&gt;
+
+&lt;h2 id=&quot;description-of-the-solution&quot;&gt;Description of the solution&lt;/h2&gt;
+
+&lt;p&gt;For our example the only subtask of information extraction we need is called &lt;em&gt;named entity recognition&lt;/em&gt;. Having the statement properly tagged we are able to compose our &lt;code&gt;Query&lt;/code&gt;. By tagging we mean assigning some domain specific meta information to each word from the statement, e.g.:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;em&gt;the martian in san francisco tomorrow&lt;/em&gt; -&amp;gt; &lt;em&gt;(MOVIE_NAME: the martian) (PREPOSITION: in) (THEATER_LOCATION: san francisco) (TIME_EXPRESSION: tomorrow)&lt;/em&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;em&gt;amc next wednesday&lt;/em&gt; -&amp;gt; &lt;em&gt;(THEATER_NAME: amc) (TIME_EXPRESSION: next wednesday)&lt;/em&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;tools&quot;&gt;Tools&lt;/h3&gt;
+
+&lt;p&gt;When trying to tackle the problem, our first attempt was to try the &lt;a href=&quot;http://nlp.stanford.edu/software/CRF-NER.shtml&quot;&gt;Stanford Named Entity Recognizer&lt;/a&gt;, which gave us stunning results, but unfortunately cannot be used commercially because of the GNU GPLv2 licensing.&lt;/p&gt;
+
+&lt;p&gt;Finally we decided to use the &lt;a href=&quot;https://github.com/dlwh/epic&quot;&gt;Epic&lt;/a&gt; library from &lt;a href=&quot;http://www.scalanlp.org/&quot;&gt;ScalaNLP&lt;/a&gt; suite (all licensed under Apache 2.0). &lt;em&gt;Epic&lt;/em&gt; has many NLP algorithms implemented, but the downside we encountered is lack of the documentation thus it’s usage is far from straightforward.&lt;/p&gt;
+
+&lt;h3 id=&quot;sample-data&quot;&gt;Sample data&lt;/h3&gt;
+
+&lt;p&gt;In order to train the Named Entity Recognizer (NER) we need to supply the algorithm with sample data. If we don’t have any real life data then we may generate some random statements based on possible schemas, like:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;code&gt;[MOVIE_NAME] in [THEATER_LOCATION] [TIME_EXPRESSION]&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code&gt;[MOVIE_GENRE] [TIME_EXPRESSION] in [THEATER_LOCATION]&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The format of the input depends on the library we use. The academic standard for describing the training data, &lt;a href=&quot;http://www.cnts.ua.ac.be/conll2003/ner/&quot;&gt;CoNLL&lt;/a&gt;, covers much more than we need. Fortunately there is a way to simplify to just tagging, i.e.:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;the MOVIE_NAME
+martian MOVIE_NAME
+in PREPOSITION
+san THEATER_LOCATION
+francisco THEATER_LOCATION
+tomorrow TIME_EXPRESSION
+
+comedy MOVIE_GENRE
+thursday TIME_EXPRESSION
+evening TIME_EXPRESSION
+in PREPOSITION
+san THEATER_LOCATION
+francisco THEATER_LOCATION
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The optimal size of the training sample depends on the complexity of the domain and should be verified empirically.&lt;/p&gt;
+
+&lt;p&gt;You can check the example at &lt;a href=&quot;https://github.com/evojam/simple-nlp-search-dataset-generator&quot;&gt;GitHub&lt;/a&gt; how we generated sample data.&lt;/p&gt;
+
+&lt;h3 id=&quot;training-ner&quot;&gt;Training NER&lt;/h3&gt;
+
+&lt;p&gt;We need to encode the relationships between the tagged statements and then construct some consistent interpretations for further reuse. Statistical tools that solves this problem are called &lt;em&gt;conditional random fields (CRFs)&lt;/em&gt;. In &lt;em&gt;ScalaNLP&lt;/em&gt; there are two implementations of CRF available. The first one &lt;code&gt;epic.sequences.CRF&lt;/code&gt; is the ordinary linear-chain CRF and the second one &lt;code&gt;epic.sequences.SemiCRF&lt;/code&gt; is an implementation of semi-Markov linear chain that should have better performance at small cost of accuracy.&lt;/p&gt;
+
+&lt;h4 id=&quot;load-input-data-into-sequence-reader&quot;&gt;Load input data into sequence reader&lt;/h4&gt;
+&lt;p&gt;&lt;em&gt;ScalaNLP&lt;/em&gt; has built-in parser for CoNLL data - &lt;code&gt;epic.corpora.CONLLSequenceReader&lt;/code&gt; which accepts the data input we proposed in section &lt;em&gt;Sample data&lt;/em&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var sequenceReader = CONLLSequenceReader
+  .readTrain(dataSetInputStream)
+  .toIndexedSeq
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&quot;apply-segmentation-function&quot;&gt;Apply segmentation function&lt;/h4&gt;
+&lt;p&gt;We train the CRF by transforming the input data to &lt;code&gt;epic.sequences.Segmentation[Any, String]&lt;/code&gt;. The segmentation is grouping the same tags in a row.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;val seq = sequenceReader.map(segmentation)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;the segmentation function we use:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def segmentation(ex: Example[IndexedSeq[String], IndexedSeq[IndexedSeq[String]]): Segmentation[Any, String] = {
+  val segments = ex.label.foldLeft(List.empty[(String, Int, Int)] {
+    case (acc, label) =&amp;gt; acc match {
+      case head :: tail =&amp;gt; head match {
+        case (`label`, beg, end) =&amp;gt; (label, beg, end + 1) :: tail
+        case (nextLabel, beg, end) =&amp;gt; (label, end, end + 1) :: head :: tail
+    }
+    case Nil =&amp;gt; List((String, 0, 1))
+  }
+
+  val segmentsSeq = segments
+    .reverse.map {
+      case (label, beg, end) =&amp;gt; (label, Span(beg, end))
+    }
+    .toIndexedSeq
+
+  Segmentation(segmentsSeq, ex.features.map(_.mkString), ex.id)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&quot;build-crf&quot;&gt;Build CRF&lt;/h4&gt;
+&lt;p&gt;having the input segmented, we can build the CRF:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;val crf = SemiCRF
+  .buildSimple(seq)
+  .asInstanceOf[SemiCRF[String, String]]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&quot;use-the-trained-crf-for-tagging-sequences&quot;&gt;Use the trained &lt;code&gt;crf&lt;/code&gt; for tagging sequences&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;val taggedSequence: Segmentation[String, String] =
+  crf.bestSequence(epic.preprocess.tokenize(inputString))
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;epic.preprocess.tokenize&lt;/code&gt; is just tokenizing by whitespace.&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;Segmentation&lt;/code&gt; carries the tagged sequence. When we render a sample expression we get a string with tagged segments:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[MOVIE_NAME: the martian] [PREPOSITION: in] [THEATER_LOCATION: san francisco] [PREPOSITION: on] [TIME_EXPRESSION: 11th June 2016]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;With such a tagging we are almost ready to construct the &lt;code&gt;Query&lt;/code&gt;. The only missing part are the &lt;code&gt;TIME_EXPRESSION&lt;/code&gt;s. We need explicit &lt;code&gt;from&lt;/code&gt; and &lt;code&gt;to&lt;/code&gt; parameters of type &lt;code&gt;DateTime&lt;/code&gt;. We may use &lt;a href=&quot;http://www.ocpsoft.org/prettytime/nlp/&quot;&gt;PrettyTime::NLP&lt;/a&gt; to parse explicit time expressions, like: &lt;code&gt;11th June 2016&lt;/code&gt;, but if we want to obtain something more sophisticated, like &lt;code&gt;next Wed&lt;/code&gt; or &lt;code&gt;tomorrow&lt;/code&gt; we should employ the NLP approach again, i.e. training the CRF for time expressions.&lt;/p&gt;
+
+&lt;p&gt;The results are pretty astonishing. The &lt;code&gt;crf&lt;/code&gt;, once trained, is working instantly. The accuracy of the interpretation will vary depending on the complexity of the domain and size of the training sample. In our case, we were surprised about the accuracy - even for ambiguous statements, the &lt;code&gt;crf&lt;/code&gt; was doing well.&lt;/p&gt;
+
+&lt;p&gt;For the sample size of 200K input statements (generated with &lt;a href=&quot;https://github.com/evojam/simple-nlp-search-dataset-generator&quot;&gt;simple-ner-search-dataset-generator&lt;/a&gt;, we’ve trained the NER with &lt;a href=&quot;https://github.com/evojam/ner-trainer&quot;&gt;ner-trainer&lt;/a&gt;, and get the following results:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;the martian in san francisco tomorrow
+[MOVIE_NAME: the martian] [PREPOSITION: in] [THEATER_LOCATION: san francisco] [TIME_EXPRESSION: tomorrow] (in 8 ms)
+
+the revenant in amc next week
+[MOVIE_NAME: the revenant] [PREPOSITION: in] [THEATER_NAME: amc] [TIME_EXPRESSION: next week] (in 15 ms)
+
+cinemark next wednesday
+[THEATER_NAME: cinemark] [TIME_EXPRESSION: next wednesday] (in 2 ms)
+
+drama in san francisco on 11 june
+[MOVIE_GENRE: drama] [PREPOSITION: in] [THEATER_LOCATION: san francisco] [PREPOSITION: on] [TIME_EXPRESSION: 11 june] (in 4 ms)
+
+amc next wednesday
+[THEATER_NAME: amc] [TIME_EXPRESSION: next wednesday] (in 2 ms)
+
+the martian in san francisco on 11th june 2016
+[MOVIE_NAME: the martian] [PREPOSITION: in] [THEATER_LOCATION: san francisco] [PREPOSITION: on] [TIME_EXPRESSION: 11th june 2016] (in 8 ms)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;You can check this yourself in the interactive session by installing the &lt;a href=&quot;https://github.com/evojam/ner-trainer&quot;&gt;ner-trainer&lt;/a&gt; and loading the serialized &lt;a href=&quot;https://www.dropbox.com/s/qfezeynlcegkfni/film-screenings.tar.gz?dl=0&quot;&gt;example&lt;/a&gt; by calling &lt;code&gt;ner-trainer -l film-screenings.tar.gz&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;tradeoffs&quot;&gt;Tradeoffs&lt;/h3&gt;
+
+&lt;p&gt;Unfortunately training the &lt;em&gt;CRF&lt;/em&gt; is extremely time consuming (measured in hours). There is a need to serialize the &lt;code&gt;SemiCRF&lt;/code&gt; object in order not to waste time. The serialization comes at the cost of taking care of binary compatibility. Also &lt;code&gt;SemiCRF&lt;/code&gt; might be a quite heavy object, so there comes the cost of additional memory.&lt;/p&gt;
+
+&lt;p&gt;The &lt;em&gt;Epic&lt;/em&gt; library is not easy to use. The documentation is not very helpful, and also lacks serious static typing. Even in this short example we were not able to avoid &lt;code&gt;asInstanceOf&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusions&quot;&gt;Conclusions&lt;/h2&gt;
+
+&lt;p&gt;The libraries that are currently available nicely cover the hard parts of the problem. The tradeoffs are possible to overcome and many of them are relatively easy to fix, so probably will disappear in the future. Nevertheless it is possible to construct quite sophisticated NLP based search without drowning in complicated math. Even the newcomer should be able to implement the search in a matter of days.&lt;/p&gt;
+
+&lt;h3 id=&quot;urls&quot;&gt;URLs&lt;/h3&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;ScalaNLP: &lt;a href=&quot;http://www.scalanlp.org/&quot;&gt;http://www.scalanlp.org/&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;Stanford Named Entity Recognizer: &lt;a href=&quot;http://nlp.stanford.edu/software/CRF-NER.shtml&quot;&gt;http://nlp.stanford.edu/software/CRF-NER.shtml&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;PrettyTime::NLP: &lt;a href=&quot;http://www.ocpsoft.org/prettytime/nlp/&quot;&gt;http://www.ocpsoft.org/prettytime/nlp/&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;NER Trainer: &lt;a href=&quot;https://github.com/evojam/ner-trainer&quot;&gt;https://github.com/evojam/ner-trainer&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;Film Screenings Data Set Generator: &lt;a href=&quot;https://github.com/evojam/simple-nlp-search-dataset-generator&quot;&gt;https://github.com/evojam/simple-nlp-search-dataset-generator&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;Sample &lt;a href=&quot;https://drive.google.com/file/d/0ByjmxsRtyWkLMWwxT2cyamJ1WUU/view?usp=sharing&quot;&gt;serialized CRF for film screenings&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;All of you feel invited to checkout and hack with NER trainer and data set generator on your domain. Please provide feedback in comments how this approach is working for you.&lt;/p&gt;
+
+&lt;p&gt;This article was originally published on &lt;a href=&quot;http://tech.evojam.com&quot;&gt;tech.evojam.com&lt;/a&gt; – there are many other interesting posts there!&lt;/p&gt;
+</content>
+ </entry>
+ 
+ 
+</feed>
